@@ -156,6 +156,16 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
     return @"Unknown";
 }
 
+static NSArray<NSDictionary *> *sensorDefinitions(void) {
+    return @[
+        @{@"key": @"TCMz", @"name": @"CPU Die Hotspot", @"keys": @[@"TCMz"]},
+        @{@"key": @"Tp01", @"name": @"CPU Performance Core 1", @"keys": @[@"Tp01"]},
+        @{@"key": @"Tg05", @"name": @"GPU (hottest)", @"keys": @[@"Tg05", @"Tg0C", @"Tg0d", @"Tg0D", @"Tg0e", @"Tg0G", @"Tg0H", @"Tg0j", @"Tg0K", @"Tg0k", @"Tg0L", @"Tg0m", @"Tg0n", @"Tg0O", @"Tg0P", @"Tg0U", @"Tg0V", @"Tg0X", @"Tg0Y"]},
+        @{@"key": @"Tm02", @"name": @"Memory (hottest)", @"keys": @[@"Tm02", @"Tm0B"]},
+        @{@"key": @"TB0T", @"name": @"Battery", @"keys": @[@"TB0T"]}
+    ];
+}
+
 @interface LightHot : NSObject <NSApplicationDelegate, NSMenuDelegate>
 @property (strong) NSStatusItem *item;
 @property (strong) NSMenuItem *pressureItem;
@@ -193,13 +203,7 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
-    self.sensors = @[
-        @{@"key": @"TCMz", @"name": @"CPU Die Hotspot", @"keys": @[@"TCMz"]},
-        @{@"key": @"Tp01", @"name": @"CPU Performance Core 1", @"keys": @[@"Tp01"]},
-        @{@"key": @"Tg05", @"name": @"GPU (hottest)", @"keys": @[@"Tg05", @"Tg0C", @"Tg0d", @"Tg0D", @"Tg0e", @"Tg0G", @"Tg0H", @"Tg0j", @"Tg0K", @"Tg0k", @"Tg0L", @"Tg0m", @"Tg0n", @"Tg0O", @"Tg0P", @"Tg0U", @"Tg0V", @"Tg0X", @"Tg0Y"]},
-        @{@"key": @"Tm02", @"name": @"Memory (hottest)", @"keys": @[@"Tm02", @"Tm0B"]},
-        @{@"key": @"TB0T", @"name": @"Battery", @"keys": @[@"TB0T"]}
-    ];
+    self.sensors = sensorDefinitions();
     self.selectedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"SelectedSensor"] ?: @"TCMz";
     if (![[self.sensors valueForKey:@"key"] containsObject:self.selectedKey]) self.selectedKey = @"TCMz";
     self.sensorItems = [NSMutableArray array];
@@ -328,8 +332,11 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (argc > 1 && strcmp(argv[1], "--dump-sensors") == 0) {
-            for (NSString *key in @[@"TCMz", @"Tp01", @"Tg05", @"Tg0C", @"Tg0d", @"Tg0D", @"Tg0e", @"Tg0G", @"Tg0H", @"Tg0j", @"Tg0K", @"Tg0k", @"Tg0L", @"Tg0m", @"Tg0n", @"Tg0O", @"Tg0P", @"Tg0U", @"Tg0V", @"Tg0X", @"Tg0Y", @"Tm02", @"Tm0B", @"TB0T"])
-                smcTemperature(key.UTF8String, YES);
+            for (NSDictionary *sensor in sensorDefinitions()) {
+                for (NSString *key in sensor[@"keys"]) {
+                    smcTemperature(key.UTF8String, YES);
+                }
+            }
             return 0;
         }
         NSApplication *app = [NSApplication sharedApplication];
