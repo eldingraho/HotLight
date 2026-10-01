@@ -126,6 +126,20 @@ static double smcTemperature(const char *name, BOOL dump) {
     return isfinite(value) && value >= 0 && value < 120 ? value : NAN;
 }
 
+static double hottestSMCTemperature(NSArray<NSString *> *keys, BOOL dump) {
+    double hottest = NAN;
+    for (NSString *key in keys) {
+        double value = smcTemperature(key.UTF8String, dump);
+        if (isfinite(value) && (isnan(hottest) || value > hottest)) hottest = value;
+    }
+    return hottest;
+}
+
+static double sensorTemperature(NSDictionary *sensor, BOOL dump) {
+    NSArray<NSString *> *keys = sensor[@"keys"];
+    return hottestSMCTemperature(keys, dump);
+}
+
 static double cpuTemperature(BOOL dumpSensors, BOOL *usesHotspot) {
     double hotspot = smcTemperature("TCMz", dumpSensors);
     if (usesHotspot) *usesHotspot = isfinite(hotspot);
@@ -156,11 +170,11 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
     self.sensors = @[
-        @{@"key": @"TCMz", @"name": @"CPU Die Hotspot"},
-        @{@"key": @"Tp01", @"name": @"CPU Performance Core 1"},
-        @{@"key": @"Tg05", @"name": @"GPU Sensor 1"},
-        @{@"key": @"Tm02", @"name": @"Memory Sensor 1"},
-        @{@"key": @"TB0T", @"name": @"Battery"}
+        @{@"key": @"TCMz", @"name": @"CPU Die Hotspot", @"keys": @[@"TCMz"]},
+        @{@"key": @"Tp01", @"name": @"CPU Performance Core 1", @"keys": @[@"Tp01"]},
+        @{@"key": @"Tg05", @"name": @"GPU (hottest)", @"keys": @[@"Tg05", @"Tg0C", @"Tg0d", @"Tg0D", @"Tg0e", @"Tg0G", @"Tg0H", @"Tg0j", @"Tg0K", @"Tg0k", @"Tg0L", @"Tg0m", @"Tg0n", @"Tg0O", @"Tg0P", @"Tg0U", @"Tg0V", @"Tg0X", @"Tg0Y"]},
+        @{@"key": @"Tm02", @"name": @"Memory (hottest)", @"keys": @[@"Tm02", @"Tm0B"]},
+        @{@"key": @"TB0T", @"name": @"Battery", @"keys": @[@"TB0T"]}
     ];
     self.selectedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"SelectedSensor"] ?: @"TCMz";
     if (![[self.sensors valueForKey:@"key"] containsObject:self.selectedKey]) self.selectedKey = @"TCMz";
@@ -233,14 +247,18 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
                 ? [NSString stringWithFormat:@"%.0f RPM", rpm] : @"Unavailable";
             fan.title = [NSString stringWithFormat:@"Fan %ld: %@", (long)fan.tag + 1, reading];
         }
-        double temperature = smcTemperature(self.selectedKey.UTF8String, NO);
+        NSDictionary *selectedSensor = nil;
+        for (NSDictionary *sensor in self.sensors) {
+            if ([sensor[@"key"] isEqualToString:self.selectedKey]) { selectedSensor = sensor; break; }
+        }
+        double temperature = selectedSensor ? sensorTemperature(selectedSensor, NO) : NAN;
         BOOL fallback = [self.selectedKey isEqualToString:@"TCMz"] && !isfinite(temperature);
         if (fallback) temperature = hidTemperature(NO);
         NSString *sensorName = @"Temperature";
         for (NSMenuItem *choice in self.sensorItems) {
             NSDictionary *sensor = choice.representedObject;
             BOOL selected = [sensor[@"key"] isEqualToString:self.selectedKey];
-            double value = selected ? temperature : smcTemperature([sensor[@"key"] UTF8String], NO);
+            double value = selected ? temperature : sensorTemperature(sensor, NO);
             choice.title = [NSString stringWithFormat:@"%@: %@", sensor[@"name"],
                 isfinite(value) ? [NSString stringWithFormat:@"%.0f°C", value] : @"Unavailable"];
             choice.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
@@ -281,7 +299,7 @@ int main(int argc, char **argv) {
             return 0;
         }
         if (argc > 1 && strcmp(argv[1], "--dump-sensors") == 0) {
-            for (NSString *key in @[@"TCMz", @"Tp01", @"Tg05", @"Tm02", @"TB0T"])
+            for (NSString *key in @[@"TCMz", @"Tp01", @"Tg05", @"Tg0C", @"Tg0d", @"Tg0D", @"Tg0e", @"Tg0G", @"Tg0H", @"Tg0j", @"Tg0K", @"Tg0k", @"Tg0L", @"Tg0m", @"Tg0n", @"Tg0O", @"Tg0P", @"Tg0U", @"Tg0V", @"Tg0X", @"Tg0Y", @"Tm02", @"Tm0B", @"TB0T"])
                 smcTemperature(key.UTF8String, YES);
             return 0;
         }

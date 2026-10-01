@@ -24,15 +24,15 @@ To install, copy the built `LightHot.app` into Applications. The app does not ad
 
 ## Sensors
 
-| Reading | SMC key |
+| Reading | SMC key candidates |
 | --- | --- |
 | CPU die hotspot | TCMz |
 | CPU performance core 1 | Tp01 |
-| GPU sensor 1 | Tg05 |
-| Memory sensor 1 | Tm02 |
+| GPU (hottest) | Tg05, Tg0C, Tg0d, Tg0D, Tg0e, Tg0G, Tg0H, Tg0j, Tg0K, Tg0k, Tg0L, Tg0m, Tg0n, Tg0O, Tg0P, Tg0U, Tg0V, Tg0X, Tg0Y |
+| Memory (hottest) | Tm02, Tm0B |
 | Battery | TB0T |
 
-These are individual sensor readings, not component averages. The default CPU hotspot falls back to CPU-related HID sensors when unavailable. Other missing readings display Unavailable or an em dash. Fan readings use FNum and each fan’s current-speed key; 0 RPM means stopped.
+The app reads each row’s SMC key candidates and displays the hottest available temperature for that row. The default CPU hotspot falls back to CPU-related HID sensors when unavailable. Missing readings display Unavailable or an em dash. Fan readings use FNum and each fan’s current-speed key; 0 RPM means stopped.
 
 Apple Silicon exposes thermal pressure rather than the Intel scheduler-limit information. The SMC and HID interfaces used here are not stable public Apple APIs.
 
