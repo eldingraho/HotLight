@@ -123,7 +123,7 @@ static double smcValue(const char *name, BOOL dump) {
 
 static double smcTemperature(const char *name, BOOL dump) {
     double value = smcValue(name, dump);
-    return isfinite(value) && value >= 0 && value < 120 ? value : NAN;
+    return isfinite(value) && value >= 1 && value < 120 ? value : NAN;
 }
 
 static double hottestSMCTemperature(NSArray<NSString *> *keys, BOOL dump) {
@@ -164,9 +164,33 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
 @property (strong) NSArray<NSDictionary *> *sensors;
 @property (strong) NSMutableArray<NSMenuItem *> *sensorItems;
 @property (strong) NSMutableArray<NSMenuItem *> *fanItems;
+@property (assign) BOOL menuOpen;
+@property (strong) NSMutableDictionary<NSString *, NSNumber *> *lastValidSensorTemperatures;
+@property (strong) NSMutableDictionary<NSString *, NSDate *> *lastValidSensorTimes;
 @end
 
 @implementation LightHot
+- (double)displayTemperatureForSensor:(NSDictionary *)sensor dump:(BOOL)dump {
+    double value = sensorTemperature(sensor, dump);
+    NSArray<NSString *> *keys = sensor[@"keys"];
+    NSString *key = sensor[@"key"];
+    if (isfinite(value)) {
+        if (keys.count > 1) {
+            self.lastValidSensorTemperatures[key] = @(value);
+            self.lastValidSensorTimes[key] = [NSDate date];
+        }
+        return value;
+    }
+    if (keys.count > 1) {
+        NSNumber *lastValue = self.lastValidSensorTemperatures[key];
+        NSDate *lastTime = self.lastValidSensorTimes[key];
+        if (lastValue && lastTime && [[NSDate date] timeIntervalSinceDate:lastTime] <= 120) {
+            return lastValue.doubleValue;
+        }
+    }
+    return NAN;
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     (void)notification;
     self.sensors = @[
@@ -179,6 +203,8 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
     self.selectedKey = [[NSUserDefaults standardUserDefaults] stringForKey:@"SelectedSensor"] ?: @"TCMz";
     if (![[self.sensors valueForKey:@"key"] containsObject:self.selectedKey]) self.selectedKey = @"TCMz";
     self.sensorItems = [NSMutableArray array];
+    self.lastValidSensorTemperatures = [NSMutableDictionary dictionary];
+    self.lastValidSensorTimes = [NSMutableDictionary dictionary];
     self.item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
     NSImage *symbol = [NSImage imageWithSize:NSMakeSize(14, 16) flipped:NO drawingHandler:^BOOL(NSRect bounds) {
         (void)bounds;
@@ -235,7 +261,8 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
     [self refresh:nil];
 }
 
-- (void)menuWillOpen:(NSMenu *)menu { (void)menu; [self refresh:nil]; }
+- (void)menuWillOpen:(NSMenu *)menu { (void)menu; self.menuOpen = YES; [self refresh:nil]; }
+- (void)menuDidClose:(NSMenu *)menu { (void)menu; self.menuOpen = NO; }
 
 - (void)refresh:(NSTimer *)timer {
     (void)timer;
@@ -251,16 +278,18 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
         for (NSDictionary *sensor in self.sensors) {
             if ([sensor[@"key"] isEqualToString:self.selectedKey]) { selectedSensor = sensor; break; }
         }
-        double temperature = selectedSensor ? sensorTemperature(selectedSensor, NO) : NAN;
+        double temperature = selectedSensor ? [self displayTemperatureForSensor:selectedSensor dump:NO] : NAN;
         BOOL fallback = [self.selectedKey isEqualToString:@"TCMz"] && !isfinite(temperature);
         if (fallback) temperature = hidTemperature(NO);
         NSString *sensorName = @"Temperature";
         for (NSMenuItem *choice in self.sensorItems) {
             NSDictionary *sensor = choice.representedObject;
             BOOL selected = [sensor[@"key"] isEqualToString:self.selectedKey];
-            double value = selected ? temperature : sensorTemperature(sensor, NO);
-            choice.title = [NSString stringWithFormat:@"%@: %@", sensor[@"name"],
-                isfinite(value) ? [NSString stringWithFormat:@"%.0f°C", value] : @"Unavailable"];
+            if (selected || self.menuOpen) {
+                double value = selected ? temperature : [self displayTemperatureForSensor:sensor dump:NO];
+                choice.title = [NSString stringWithFormat:@"%@: %@", sensor[@"name"],
+                    isfinite(value) ? [NSString stringWithFormat:@"%.0f°C", value] : @"Unavailable"];
+            }
             choice.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
             if (selected) sensorName = fallback ? @"CPU sensor (fallback)" : sensor[@"name"];
         }
