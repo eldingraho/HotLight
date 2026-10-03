@@ -7,6 +7,7 @@ A lightweight native macOS menu bar temperature monitor. The app currently appea
 - Compact thermometer icon and selected temperature in the menu bar.
 - Native menu with five sensor choices and a checkmark for the saved selection.
 - Thermal pressure and current fan speeds, updated every two seconds.
+- Thermometer color follows macOS thermal pressure: normal system color for Nominal, yellow for Fair, and red for Serious or Critical. Pressure changes update immediately; the menu and tooltip show the exact state.
 - Read-only hardware access: no privileged helper, fan control, or network connection.
 
 ## Requirements
@@ -52,7 +53,7 @@ Version 0.7 measured 15.0 MB physical footprint (15.1 MB peak) after startup on 
 
 ## Design and references
 
-The interface uses a native AppKit menu, a template icon, system text styling, standard selection checkmarks, and Command-Q, following [Apple’s menu bar guidance](https://developer.apple.com/design/human-interface-guidelines/the-menu-bar#Menu-bar-extras).
+The interface uses a native AppKit menu, a template icon at nominal pressure and colored icons at elevated pressure, system text styling, standard selection checkmarks, and Command-Q, following [Apple’s menu bar guidance](https://developer.apple.com/design/human-interface-guidelines/the-menu-bar#Menu-bar-extras).
 
 - [Hot](https://github.com/macmade/Hot) inspired the project.
 - SMC protocol declarations derive from [SMCKit](https://github.com/macmade/SMCKit); its MIT copyright and license notice are retained in `SMC-Internal.h`.

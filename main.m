@@ -156,6 +156,21 @@ static NSString *pressureName(NSProcessInfoThermalState state) {
     return @"Unknown";
 }
 
+static NSImage *thermometerImage(NSColor *color, BOOL template) {
+    NSImage *symbol = [NSImage imageWithSize:NSMakeSize(14, 16) flipped:NO drawingHandler:^BOOL(NSRect bounds) {
+        (void)bounds;
+        [color setFill];
+        NSBezierPath *stem = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(5.5, 5, 3, 10)
+                                                           xRadius:1.5 yRadius:1.5];
+        [stem fill];
+        [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(3.5, 1.5, 7, 7)] fill];
+        return YES;
+    }];
+    symbol.accessibilityDescription = @"Temperature";
+    symbol.template = template;
+    return symbol;
+}
+
 static NSArray<NSDictionary *> *sensorDefinitions(void) {
     return @[
         @{@"key": @"TCMz", @"name": @"CPU Die Hotspot", @"keys": @[@"TCMz"]},
@@ -169,6 +184,9 @@ static NSArray<NSDictionary *> *sensorDefinitions(void) {
 @interface LightHot : NSObject <NSApplicationDelegate, NSMenuDelegate>
 @property (strong) NSStatusItem *item;
 @property (strong) NSMenuItem *pressureItem;
+@property (strong) NSImage *normalIcon;
+@property (strong) NSImage *fairIcon;
+@property (strong) NSImage *seriousIcon;
 @property (strong) NSTimer *timer;
 @property (copy) NSString *selectedKey;
 @property (strong) NSArray<NSDictionary *> *sensors;
@@ -210,18 +228,10 @@ static NSArray<NSDictionary *> *sensorDefinitions(void) {
     self.lastValidSensorTemperatures = [NSMutableDictionary dictionary];
     self.lastValidSensorTimes = [NSMutableDictionary dictionary];
     self.item = [[NSStatusBar systemStatusBar] statusItemWithLength:NSVariableStatusItemLength];
-    NSImage *symbol = [NSImage imageWithSize:NSMakeSize(14, 16) flipped:NO drawingHandler:^BOOL(NSRect bounds) {
-        (void)bounds;
-        [[NSColor blackColor] setFill];
-        NSBezierPath *stem = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(5.5, 5, 3, 10)
-                                                           xRadius:1.5 yRadius:1.5];
-        [stem fill];
-        [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(3.5, 1.5, 7, 7)] fill];
-        return YES;
-    }];
-    symbol.accessibilityDescription = @"Temperature";
-    symbol.template = YES;
-    self.item.button.image = symbol;
+    self.normalIcon = thermometerImage([NSColor blackColor], YES);
+    self.fairIcon = thermometerImage([NSColor systemYellowColor], NO);
+    self.seriousIcon = thermometerImage([NSColor systemRedColor], NO);
+    self.item.button.image = self.normalIcon;
     self.item.button.imagePosition = NSImageLeft;
     NSMenu *menu = [[NSMenu alloc] init];
     menu.delegate = self;
@@ -255,8 +265,26 @@ static NSArray<NSDictionary *> *sensorDefinitions(void) {
     [menu addItem:quit];
     self.item.menu = menu;
     [self refresh:nil];
+    // The initial refresh reads thermalState before we subscribe, as required by macOS.
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(thermalStateDidChange:)
+                                                name:NSProcessInfoThermalStateDidChangeNotification object:nil];
     self.timer = [NSTimer timerWithTimeInterval:2 target:self selector:@selector(refresh:) userInfo:nil repeats:YES];
     [[NSRunLoop mainRunLoop] addTimer:self.timer forMode:NSRunLoopCommonModes];
+}
+
+- (void)thermalStateDidChange:(NSNotification *)notification {
+    (void)notification;
+    if ([NSThread isMainThread]) {
+        [self refresh:nil];
+    } else {
+        [self performSelectorOnMainThread:@selector(refresh:) withObject:nil waitUntilDone:NO];
+    }
+}
+
+- (void)applicationWillTerminate:(NSNotification *)notification {
+    (void)notification;
+    [self.timer invalidate];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 - (void)selectSensor:(NSMenuItem *)sender {
@@ -300,6 +328,18 @@ static NSArray<NSDictionary *> *sensorDefinitions(void) {
         NSString *degrees = isnan(temperature) ? @"—" : [NSString stringWithFormat:@"%.0f°C", temperature];
         NSProcessInfoThermalState state = [NSProcessInfo processInfo].thermalState;
         NSString *pressure = pressureName(state);
+        switch (state) {
+            case NSProcessInfoThermalStateFair:
+                self.item.button.image = self.fairIcon;
+                break;
+            case NSProcessInfoThermalStateSerious:
+            case NSProcessInfoThermalStateCritical:
+                self.item.button.image = self.seriousIcon;
+                break;
+            default:
+                self.item.button.image = self.normalIcon;
+                break;
+        }
         self.item.button.font = [NSFont monospacedDigitSystemFontOfSize:[NSFont systemFontSize] weight:NSFontWeightRegular];
         self.item.button.title = degrees;
         self.pressureItem.title = [NSString stringWithFormat:@"Thermal Pressure: %@", pressure];
